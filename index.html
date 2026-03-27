@@ -533,33 +533,6 @@
     footer a:hover {
       color: #888;
     }
-
-    /* URL-loaded .seq ( ?url= / ?data= ) */
-    .url-source-banner {
-      display: none;
-      font-size: 0.82rem;
-      line-height: 1.45;
-      color: #93c5fd;
-      background: rgba(59, 130, 246, 0.12);
-      border: 1px solid rgba(59, 130, 246, 0.35);
-      border-radius: 10px;
-      padding: 12px 14px;
-      margin-bottom: 20px;
-    }
-
-    .url-source-banner.show {
-      display: block;
-    }
-
-    .url-source-banner.error {
-      color: #fecaca;
-      background: rgba(248, 113, 113, 0.1);
-      border-color: rgba(248, 113, 113, 0.35);
-    }
-
-    .file-name.url-source {
-      color: #93c5fd;
-    }
   </style>
 </head>
 
@@ -580,8 +553,6 @@
       <div class="chip">2x CPU @ 1 GB</div>
     </div>
 
-    <div id="urlSourceBanner" class="url-source-banner" role="status"></div>
-
     <!-- File picker -->
     <div class="file-picker">
       <div class="section-label">1. Select input</div>
@@ -594,6 +565,12 @@
         <span class="file-name" id="fileName">Included: gre.seq</span>
         <span class="btn-reset" id="btnReset" onclick="resetToDemo()">reset</span>
       </div>
+      <p style="font-size:0.78rem;color:#666;margin-top:12px;line-height:1.45;">
+        You can also pass a sequence via URL (same idea as
+        <a href="https://mrx-org.github.io/post_seq/" target="_blank" rel="noopener noreferrer" style="color:#888">post_seq</a>):
+        <code style="color:#9ab">#b64=…</code>,
+        <code style="color:#9ab">?url=https://…/file.seq</code> (needs CORS), or a short <code style="color:#9ab">?seq=…</code>.
+      </p>
     </div>
 
     <!-- Run button -->
@@ -5361,6 +5338,8 @@ Hash 991bb3c9d0d62ddbca468dbf62157841</script>
     import init, { call } from 'https://unpkg.com/toolapi-wasm@0.4.5/toolapi_wasm.js';
 
     var DEMO_LABEL = "Included: gre.seq";
+    /** Display name when .seq was loaded from #b64= / ?url= / ?seq= (post_seq-style links). */
+    var linkSeqTitle = "from link.seq";
     var CONSEQ_ADDR = "wss://tool-conseq.fly.dev/tool";
     var TRAJEX_ADDR = "wss://tool-trajex.fly.dev/tool";
     var MR0SIM_ADDR = "wss://tool-mr0sim.fly.dev/tool";
@@ -5368,98 +5347,8 @@ Hash 991bb3c9d0d62ddbca468dbf62157841</script>
 
     // Track editor content: null = not yet opened, string = last editor state
     var editorContent = null;
-    /** @type {"demo"|"local"|"url"} */
+    /** "demo" | "local" | "link" (URL fragment / query / fetched ?url=) */
     var editorSource = "demo";
-    /** Display name when editorSource === "url" */
-    var urlFileLabel = null;
-
-    function hideUrlBanner() {
-      var b = document.getElementById("urlSourceBanner");
-      b.classList.remove("show", "error");
-      b.textContent = "";
-    }
-
-    function showUrlBannerOk(message) {
-      var b = document.getElementById("urlSourceBanner");
-      b.className = "url-source-banner show";
-      b.textContent = message;
-    }
-
-    function showUrlBannerError(message) {
-      var b = document.getElementById("urlSourceBanner");
-      b.className = "url-source-banner show error";
-      b.textContent = message;
-    }
-
-    function b64urlToUtf8(b64url) {
-      var s = String(b64url).replace(/-/g, "+").replace(/_/g, "/");
-      var pad = s.length % 4;
-      if (pad) s += "====".slice(pad);
-      var bin = atob(s);
-      var bytes = new Uint8Array(bin.length);
-      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      return new TextDecoder("utf-8").decode(bytes);
-    }
-
-    /** Load ?url= (fetch) or ?data= (base64url) into editorContent as default for processing. */
-    async function applyQueryParams() {
-      var params = new URLSearchParams(window.location.search);
-      var fetchUrl = params.get("url");
-      var dataParam = params.get("data");
-      var nameParam = params.get("name");
-
-      if (fetchUrl && String(fetchUrl).trim()) {
-        try {
-          var res = await fetch(fetchUrl, { mode: "cors", credentials: "omit" });
-          if (!res.ok) throw new Error("HTTP " + res.status);
-          var text = await res.text();
-          var name = "from-url.seq";
-          try {
-            var u = new URL(fetchUrl, window.location.href);
-            var base = u.pathname.split("/").pop();
-            if (base) name = base;
-          } catch (e) { /* keep default */ }
-          editorContent = text;
-          editorSource = "url";
-          urlFileLabel = name;
-          document.getElementById("fileName").textContent = name + " (from link)";
-          document.getElementById("fileName").className = "file-name url-source";
-          document.getElementById("btnReset").style.display = "inline";
-          document.getElementById("seqFile").value = "";
-          showUrlBannerOk(
-            "Default sequence loaded from page URL (?url= fetch). File: " + name + ". " +
-            "The pipeline uses this text unless you select another file below."
-          );
-        } catch (err) {
-          showUrlBannerError(
-            "Could not load ?url=: " + String(err.message || err) + " (check HTTPS and CORS)."
-          );
-        }
-        return;
-      }
-
-      if (dataParam && String(dataParam).trim()) {
-        try {
-          var text2 = b64urlToUtf8(dataParam);
-          var name2 = (nameParam && nameParam.trim()) || "from-data.seq";
-          editorContent = text2;
-          editorSource = "url";
-          urlFileLabel = name2;
-          document.getElementById("fileName").textContent = name2 + " (from link)";
-          document.getElementById("fileName").className = "file-name url-source";
-          document.getElementById("btnReset").style.display = "inline";
-          document.getElementById("seqFile").value = "";
-          showUrlBannerOk(
-            "Default sequence loaded from page URL (?data= embedded). File: " + name2 + ". " +
-            "The pipeline uses this text unless you select another file below."
-          );
-        } catch (err2) {
-          showUrlBannerError("Invalid ?data=: " + String(err2.message || err2));
-        }
-      }
-    }
-
-    var urlLoadPromise = applyQueryParams();
 
     // --- File picker ---
 
@@ -5467,13 +5356,11 @@ Hash 991bb3c9d0d62ddbca468dbf62157841</script>
       var label = document.getElementById("fileName");
       var btnReset = document.getElementById("btnReset");
       if (input.files.length > 0) {
-        hideUrlBanner();
         label.textContent = input.files[0].name;
         label.className = "file-name local-file";
         btnReset.style.display = "inline";
         editorContent = null;
         editorSource = "local";
-        urlFileLabel = null;
       }
     };
 
@@ -5487,8 +5374,7 @@ Hash 991bb3c9d0d62ddbca468dbf62157841</script>
       btnReset.style.display = "none";
       editorContent = null;
       editorSource = "demo";
-      urlFileLabel = null;
-      hideUrlBanner();
+      linkSeqTitle = "from link.seq";
       resetAllBoxes();
     };
 
@@ -5582,6 +5468,92 @@ Hash 991bb3c9d0d62ddbca468dbf62157841</script>
       });
     }
 
+    var MAX_QUERY_SEQ = 8192;
+
+    function b64urlToUtf8(b64url) {
+      var s = String(b64url).replace(/-/g, "+").replace(/_/g, "/");
+      var pad = s.length % 4;
+      if (pad) s += "====".slice(pad);
+      var bin = atob(s);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new TextDecoder("utf-8").decode(bytes);
+    }
+
+    function applySeqFromLink(text, titleForViewer) {
+      editorContent = text;
+      editorSource = "link";
+      linkSeqTitle = titleForViewer || "from link.seq";
+      var label = document.getElementById("fileName");
+      label.textContent = "Loaded: " + linkSeqTitle;
+      label.className = "file-name local-file";
+      document.getElementById("btnReset").style.display = "inline";
+      document.getElementById("seqFile").value = "";
+      resetAllBoxes();
+    }
+
+    function initSeqFromLocation() {
+      var params = new URLSearchParams(window.location.search);
+      var fetchUrl = params.get("url");
+      if (fetchUrl) {
+        var label = document.getElementById("fileName");
+        label.textContent = "Loading from URL\u2026";
+        label.className = "file-name local-file";
+        fetch(fetchUrl, { mode: "cors", credentials: "omit" })
+          .then(function (res) {
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            return res.text();
+          })
+          .then(function (text) {
+            var name = "from-url.seq";
+            try {
+              var u = new URL(fetchUrl, window.location.href);
+              name = u.pathname.split("/").pop() || name;
+            } catch (e) { /* keep default */ }
+            applySeqFromLink(text, name);
+          })
+          .catch(function (err) {
+            label.textContent = "Could not load ?url= (" + (err && err.message ? err.message : err) + ")";
+            label.className = "file-name";
+          });
+        return;
+      }
+
+      var seqQ = params.get("seq");
+      if (seqQ != null && seqQ !== "") {
+        if (seqQ.length > MAX_QUERY_SEQ) {
+          document.getElementById("fileName").textContent =
+            "?seq= too long (max " + MAX_QUERY_SEQ + " chars). Use #b64= or ?url=.";
+          document.getElementById("fileName").className = "file-name";
+          return;
+        }
+        var decoded;
+        try {
+          decoded = decodeURIComponent(seqQ.replace(/\+/g, " "));
+        } catch (e) {
+          decoded = seqQ;
+        }
+        applySeqFromLink(decoded, "from-query.seq");
+        return;
+      }
+
+      var hash = window.location.hash;
+      if (hash.length > 5 && hash.indexOf("#b64=") === 0) {
+        var payload = hash.slice(5);
+        if (!payload) return;
+        try {
+          var text = b64urlToUtf8(payload);
+          applySeqFromLink(text, "from-base64.seq");
+        } catch (e) {
+          document.getElementById("fileName").textContent =
+            "Invalid #b64= data: " + (e && e.message ? e.message : e);
+          document.getElementById("fileName").className = "file-name";
+        }
+      }
+    }
+
+    initSeqFromLocation();
+
     // --- Load phantom from phantomlib ---
 
     // Phantom parameters match the notebook exactly
@@ -5615,8 +5587,6 @@ Hash 991bb3c9d0d62ddbca468dbf62157841</script>
       var currentBox = null;
 
       try {
-        await urlLoadPromise;
-
         // Initialize WASM (once)
         if (!wasmReady) {
           await init();
@@ -6128,8 +6098,8 @@ Hash 991bb3c9d0d62ddbca468dbf62157841</script>
       if (editorContent !== null) {
         if (editorSource === "demo") {
           title.textContent = "gre.seq (demo)";
-        } else if (editorSource === "url") {
-          title.textContent = (urlFileLabel || "sequence") + " (from link)";
+        } else if (editorSource === "link") {
+          title.textContent = linkSeqTitle;
         } else {
           title.textContent = fileInput.files[0].name;
         }
