@@ -46,9 +46,10 @@ def main() -> int:
     )
     args = p.parse_args()
 
+    prefix = PAGE
     t = args.target.strip()
     if t.startswith("https://"):
-        full = PAGE.rstrip("/") + "/?url=" + quote(t, safe="")
+        full = prefix + "?url=" + quote(t, safe="")
     else:
         path = Path(t).expanduser().resolve()
         if not path.is_file():
@@ -57,8 +58,8 @@ def main() -> int:
         raw = path.read_bytes()
         b64 = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
         full = (
-            PAGE.rstrip("/")
-            + "/?data="
+            prefix
+            + "?data="
             + b64
             + "&name="
             + quote(path.name, safe="")
