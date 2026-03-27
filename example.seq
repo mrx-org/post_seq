@@ -3885,3 +3885,5 @@ num_samples 3000
 # The new line character preceding [SIGNATURE] BELONGS to the signature (and needs to be stripped away for recalculating/verification)
 Type md5
 Hash 0e860b544fd35fb4464c9f06f11eac43
+# Pulseq sequence file
+# Created by PyPulseq

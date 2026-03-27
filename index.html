@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>post_seq — .seq upload</title>
+  <title>post_seq — .seq from URL</title>
   <style>
     :root {
       --bg: #0f1419;
@@ -49,28 +49,13 @@
       border-radius: 12px;
       padding: 1.5rem;
     }
-    .drop {
-      border: 2px dashed var(--border);
-      border-radius: 10px;
-      padding: 2rem 1.25rem;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
-    }
-    .drop:hover, .drop.dragover {
-      border-color: var(--accent);
-      background: rgba(61, 156, 253, 0.06);
-    }
-    .drop strong { color: var(--accent); }
-    .drop p { margin: 0.5rem 0 0; font-size: 0.9rem; color: var(--muted); }
-    input[type="file"] { display: none; }
     .hint {
-      margin-top: 1rem;
-      font-size: 0.8rem;
+      font-size: 0.85rem;
       color: var(--muted);
+      margin: 0 0 1rem;
     }
+    .hint code { font-size: 0.8rem; }
     .status {
-      margin-top: 1.25rem;
       padding: 0.85rem 1rem;
       border-radius: 8px;
       font-size: 0.9rem;
@@ -79,9 +64,8 @@
     .status.show { display: block; }
     .status.ok { background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.35); color: #a7f3d0; }
     .status.warn { background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.35); color: #fecaca; }
-    .code-field {
-      margin-top: 1rem;
-    }
+    .status.info { background: rgba(61, 156, 253, 0.1); border: 1px solid rgba(61, 156, 253, 0.3); color: #93c5fd; }
+    .code-field { margin-top: 1rem; }
     .code-field label {
       display: block;
       font-size: 0.8rem;
@@ -129,15 +113,13 @@
 <body>
   <div class="wrap">
     <h1>post_seq</h1>
-    <p class="sub">Receive a Pulseq <code>.seq</code> file in the browser (local processing only).</p>
+    <p class="sub">Load a Pulseq <code>.seq</code> file by passing an <strong>HTTPS URL</strong> in the query string.</p>
 
     <div class="card">
-      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Drop .seq file or click to choose">
-        <div>Drop a <strong>.seq</strong> file here or <strong>browse</strong></div>
-        <p>Only the file name and contents are read in your browser; nothing is uploaded to a server.</p>
-      </div>
-      <input type="file" id="file" accept=".seq,text/plain" />
-      <p class="hint">Open with a link: <code>?url=</code> (HTTPS URL to a <code>.seq</code>; page fetches it if CORS allows) or <code>#b64=</code> (base64url of file bytes; size-limited). Tiny snippets: <code>?seq=</code> (short text only). <code>POST</code> field <code>file</code> for APIs (see README).</p>
+      <p class="hint">
+        Use <code>?url=</code> with a <strong>percent-encoded</strong> URL to your file, e.g.<br />
+        <code>https://mrx-org.github.io/post_seq/?url=https%3A%2F%2Fraw.githubusercontent.com%2F…%2Ffile.seq</code>
+      </p>
 
       <div class="status" id="status" role="status"></div>
       <div class="meta" id="meta" hidden></div>
@@ -148,14 +130,13 @@
     </div>
 
     <footer>
-      <a href="https://github.com/mrx-org/post_seq">mrx-org/post_seq</a> — public URL: <a href="https://mrx-org.github.io/post_seq/">https://mrx-org.github.io/post_seq/</a>
+      <a href="https://github.com/mrx-org/post_seq">mrx-org/post_seq</a> — public URL:
+      <a href="https://mrx-org.github.io/post_seq/">https://mrx-org.github.io/post_seq/</a>
     </footer>
   </div>
 
   <script>
     (function () {
-      var drop = document.getElementById("drop");
-      var input = document.getElementById("file");
       var statusEl = document.getElementById("status");
       var metaEl = document.getElementById("meta");
       var codeFieldEl = document.getElementById("codeField");
@@ -166,8 +147,6 @@
         statusEl.innerHTML = html;
       }
 
-      var MAX_QUERY_SEQ = 8192;
-
       function resetExtra() {
         metaEl.hidden = true;
         codeFieldEl.hidden = true;
@@ -175,101 +154,16 @@
         seqContentEl.value = "";
       }
 
-      function applySeqText(text, label, name, sizeBytes) {
+      function applySeqText(text, name, sizeBytes) {
         resetExtra();
-        var n = name || "(text)";
-        var sz = sizeBytes != null ? sizeBytes : new Blob([String(text)]).size;
-        showStatus("ok", "<strong>Loaded</strong> (" + escapeHtml(label) + "): <code>" + escapeHtml(n) + "</code> — " + formatBytes(sz) + ".");
+        showStatus("ok", "<strong>Loaded</strong> from <code>?url=</code>: <code>" + escapeHtml(name) + "</code> — " + formatBytes(sizeBytes) + ".");
         metaEl.hidden = false;
         metaEl.innerHTML =
-          '<div>Source: <span>' + escapeHtml(label) + "</span></div>" +
-          '<div>Name: <span>' + escapeHtml(n) + "</span></div>" +
-          '<div>Size: <span>' + formatBytes(sz) + "</span></div>";
+          '<div>Source: <span>?url= fetch</span></div>' +
+          '<div>Name: <span>' + escapeHtml(name) + "</span></div>" +
+          '<div>Size: <span>' + formatBytes(sizeBytes) + "</span></div>";
         seqContentEl.value = String(text);
         codeFieldEl.hidden = false;
-      }
-
-      function b64urlToUtf8(b64url) {
-        var s = String(b64url).replace(/-/g, "+").replace(/_/g, "/");
-        var pad = s.length % 4;
-        if (pad) s += "====".slice(pad);
-        var bin = atob(s);
-        var bytes = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        return new TextDecoder("utf-8").decode(bytes);
-      }
-
-      function initFromLocation() {
-        var params = new URLSearchParams(window.location.search);
-        var fetchUrl = params.get("url");
-        if (fetchUrl) {
-          fetch(fetchUrl, { mode: "cors", credentials: "omit" })
-            .then(function (res) {
-              if (!res.ok) throw new Error("HTTP " + res.status);
-              return res.text();
-            })
-            .then(function (text) {
-              try {
-                var u = new URL(fetchUrl, window.location.href);
-                var base = u.pathname.split("/").pop() || "from-url.seq";
-                applySeqText(text, "?url= fetch", base, new Blob([text]).size);
-              } catch (e) {
-                applySeqText(text, "?url= fetch", "from-url.seq", new Blob([text]).size);
-              }
-            })
-            .catch(function (err) {
-              showStatus("warn", "Could not load <code>?url=</code>: " + escapeHtml(String(err.message || err)) + ". The host must allow CORS from this origin.");
-            });
-          return;
-        }
-
-        var seqQ = params.get("seq");
-        if (seqQ != null && seqQ !== "") {
-          if (seqQ.length > MAX_QUERY_SEQ) {
-            showStatus("warn", "<code>?seq=</code> is too long (&gt; " + MAX_QUERY_SEQ + " chars). Put the file online and use <code>?url=</code>, or use <code>#b64=</code> / local file.");
-            return;
-          }
-          var decoded;
-          try {
-            decoded = decodeURIComponent(seqQ.replace(/\+/g, " "));
-          } catch (e) {
-            decoded = seqQ;
-          }
-          applySeqText(decoded, "?seq= query", "from-query.seq", new Blob([decoded]).size);
-          return;
-        }
-
-        var hash = window.location.hash;
-        if (hash.length > 5 && hash.indexOf("#b64=") === 0) {
-          var payload = hash.slice(5);
-          if (!payload) return;
-          try {
-            var text = b64urlToUtf8(payload);
-            applySeqText(text, "#b64= fragment", "from-base64.seq", new Blob([text]).size);
-          } catch (e) {
-            showStatus("warn", "Invalid <code>#b64=</code> data: " + escapeHtml(String(e.message || e)));
-          }
-        }
-      }
-
-      function handleFile(file) {
-        resetExtra();
-        if (!file) return;
-        var name = file.name || "";
-        var lower = name.toLowerCase();
-        if (lower && !lower.endsWith(".seq")) {
-          showStatus("warn", "The selected file does not end with <code>.seq</code>. You can still preview it.");
-        }
-
-        var reader = new FileReader();
-        reader.onload = function () {
-          var text = reader.result || "";
-          applySeqText(text, "file", name, file.size);
-        };
-        reader.onerror = function () {
-          showStatus("warn", "Could not read the file.");
-        };
-        reader.readAsText(file);
       }
 
       function escapeHtml(s) {
@@ -284,31 +178,42 @@
         return (n / (1024 * 1024)).toFixed(1) + " MB";
       }
 
-      drop.addEventListener("click", function () { input.click(); });
-      drop.addEventListener("keydown", function (e) {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
-      });
-      input.addEventListener("change", function () {
-        var f = input.files && input.files[0];
-        handleFile(f);
-      });
+      function run() {
+        var params = new URLSearchParams(window.location.search);
+        var fetchUrl = params.get("url");
+        if (!fetchUrl || !String(fetchUrl).trim()) {
+          showStatus(
+            "info",
+            "No <code>url</code> query parameter. Add <code>?url=</code> plus your <strong>encoded</strong> HTTPS link to a <code>.seq</code> file (see README)."
+          );
+          return;
+        }
 
-      ["dragenter", "dragover", "dragleave", "drop"].forEach(function (ev) {
-        drop.addEventListener(ev, function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-        });
-      });
-      drop.addEventListener("dragenter", function () { drop.classList.add("dragover"); });
-      drop.addEventListener("dragleave", function () { drop.classList.remove("dragover"); });
-      drop.addEventListener("dragover", function () { drop.classList.add("dragover"); });
-      drop.addEventListener("drop", function (e) {
-        drop.classList.remove("dragover");
-        var f = e.dataTransfer.files && e.dataTransfer.files[0];
-        handleFile(f);
-      });
+        showStatus("info", "Loading…");
+        fetch(fetchUrl, { mode: "cors", credentials: "omit" })
+          .then(function (res) {
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            return res.text();
+          })
+          .then(function (text) {
+            var name = "from-url.seq";
+            try {
+              var u = new URL(fetchUrl, window.location.href);
+              var base = u.pathname.split("/").pop();
+              if (base) name = base;
+            } catch (e) { /* keep default */ }
+            applySeqText(text, name, new Blob([text]).size);
+          })
+          .catch(function (err) {
+            resetExtra();
+            showStatus(
+              "warn",
+              "Could not load <code>?url=</code>: " + escapeHtml(String(err.message || err)) + ". The file URL must be reachable and allow CORS from this origin."
+            );
+          });
+      }
 
-      initFromLocation();
+      run();
     })();
   </script>
 </body>
