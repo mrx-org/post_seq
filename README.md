@@ -1,74 +1,28 @@
 # post_seq
 
-Static GitHub Pages app: open a Pulseq **`.seq`** file by passing a **single query parameter** — the **HTTPS URL of the file**, as a **percent-encoded** string.
+Static GitHub Pages app: load a Pulseq **`.seq`** from the URL query string (**`?data=`** — base64url of the file bytes, optional **`&name=`**).
 
 **Public URL:** [https://mrx-org.github.io/post_seq/](https://mrx-org.github.io/post_seq/)
 
-## How it works
+Nothing is uploaded to GitHub Pages; the app runs in the browser.
 
-1. Host your `.seq` somewhere **public over HTTPS** (see below).
-2. Build a link to this site with **`?url=`** set to that address, **URL-encoded** (so `https://` becomes `https%3A%2F%2F`, etc.).
-3. Open the link. The page **`fetch`es** the file in the browser and shows the text. Nothing is uploaded to GitHub Pages.
+### Local file → open in the browser (URL carries the content)
 
-Example shape:
-
-```text
-https://mrx-org.github.io/post_seq/?url=https%3A%2F%2Fraw.githubusercontent.com%2FUSER%2FREPO%2Fmain%2Fpath%2Ffile.seq
-```
-
-### Requirements
-
-- **HTTPS** for the file URL (mixed content rules).
-- **CORS**: the file host must allow **`GET`** from **`https://mrx-org.github.io`** (many **GitHub raw** / **Gist raw** URLs work).
-
-### Helper script (optional)
-
-From the repo root, open the page with a correctly encoded `?url=` (stdlib only):
+From the repo directory, pass a **path** to your `.seq` file:
 
 ```bash
-python -u send_example_seq.py "https://raw.githubusercontent.com/USER/REPO/REF/path/file.seq"
+python -u send_example_seq.py path/to/my_sequence.seq
 ```
 
-Print the final URL without opening a browser:
+The script reads the file, builds `?data=<base64url>&name=...`, and opens the GitHub Pages app. If the full URL is very long (large files), it uses a short **temporary HTML redirect** on Windows so the browser still opens.
+
+Print the link without opening the browser:
 
 ```bash
-python -u send_example_seq.py --print-only "https://…/file.seq"
+python -u send_example_seq.py --print-only my_sequence.seq
 ```
 
-### Build `?url=` yourself
-
-**JavaScript** (e.g. browser console):
-
-```javascript
-const fileUrl = "https://raw.githubusercontent.com/USER/REPO/REF/path/file.seq";
-const page = "https://mrx-org.github.io/post_seq/?url=" + encodeURIComponent(fileUrl);
-console.log(page);
-```
-
-**Python:**
-
-```python
-from urllib.parse import quote
-
-file_url = "https://raw.githubusercontent.com/USER/REPO/REF/path/file.seq"
-page = "https://mrx-org.github.io/post_seq/?url=" + quote(file_url, safe="")
-print(page)
-```
-
-### Hosting the `.seq` file
-
-| Option | Notes |
-|--------|--------|
-| **GitHub** (public repo → **Raw**) | `https://raw.githubusercontent.com/...` |
-| **GitHub Gist** (public → **Raw**) | `https://gist.githubusercontent.com/.../raw/...` |
-| Other HTTPS + CORS | Must allow browser `fetch` from `https://mrx-org.github.io`. |
-
-### Test
-
-1. Confirm the **raw** file URL opens in a browser tab and shows the sequence text.
-2. On [post_seq](https://mrx-org.github.io/post_seq/), open the console and run  
-   `fetch("YOUR_RAW_URL", { mode: "cors" }).then(r => r.text()).then(console.log)`  
-   If that succeeds, **`?url=`** will work.
+If the encoded URL exceeds a safe length, the script exits with an error (file too large to embed in a URL).
 
 ---
 

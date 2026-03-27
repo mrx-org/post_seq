@@ -113,12 +113,12 @@
 <body>
   <div class="wrap">
     <h1>post_seq</h1>
-    <p class="sub">Load a Pulseq <code>.seq</code> file by passing an <strong>HTTPS URL</strong> in the query string.</p>
+    <p class="sub">Load a Pulseq <code>.seq</code> from the query string: remote file (<code>?url=</code>) or embedded local file (<code>?data=</code>, base64url).</p>
 
     <div class="card">
       <p class="hint">
-        Use <code>?url=</code> with a <strong>percent-encoded</strong> URL to your file, e.g.<br />
-        <code>https://mrx-org.github.io/post_seq/?url=https%3A%2F%2Fraw.githubusercontent.com%2F…%2Ffile.seq</code>
+        <strong>Remote:</strong> <code>?url=</code> + percent-encoded HTTPS link to the file.<br />
+        <strong>Local (via helper script):</strong> <code>?data=</code> base64url (UTF-8 bytes), optional <code>&amp;name=</code> for the label — built by <code>python -u send_example_seq.py myfile.seq</code>.
       </p>
 
       <div class="status" id="status" role="status"></div>
@@ -154,16 +154,26 @@
         seqContentEl.value = "";
       }
 
-      function applySeqText(text, name, sizeBytes) {
+      function applySeqText(text, source, name, sizeBytes) {
         resetExtra();
-        showStatus("ok", "<strong>Loaded</strong> from <code>?url=</code>: <code>" + escapeHtml(name) + "</code> — " + formatBytes(sizeBytes) + ".");
+        showStatus("ok", "<strong>Loaded</strong> (" + escapeHtml(source) + "): <code>" + escapeHtml(name) + "</code> — " + formatBytes(sizeBytes) + ".");
         metaEl.hidden = false;
         metaEl.innerHTML =
-          '<div>Source: <span>?url= fetch</span></div>' +
+          '<div>Source: <span>' + escapeHtml(source) + "</span></div>" +
           '<div>Name: <span>' + escapeHtml(name) + "</span></div>" +
           '<div>Size: <span>' + formatBytes(sizeBytes) + "</span></div>";
         seqContentEl.value = String(text);
         codeFieldEl.hidden = false;
+      }
+
+      function b64urlToUtf8(b64url) {
+        var s = String(b64url).replace(/-/g, "+").replace(/_/g, "/");
+        var pad = s.length % 4;
+        if (pad) s += "====".slice(pad);
+        var bin = atob(s);
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new TextDecoder("utf-8").decode(bytes);
       }
 
       function escapeHtml(s) {
@@ -181,36 +191,51 @@
       function run() {
         var params = new URLSearchParams(window.location.search);
         var fetchUrl = params.get("url");
-        if (!fetchUrl || !String(fetchUrl).trim()) {
-          showStatus(
-            "info",
-            "No <code>url</code> query parameter. Add <code>?url=</code> plus your <strong>encoded</strong> HTTPS link to a <code>.seq</code> file (see README)."
-          );
+        var dataParam = params.get("data");
+        var nameParam = params.get("name");
+
+        if (fetchUrl && String(fetchUrl).trim()) {
+          showStatus("info", "Loading…");
+          fetch(fetchUrl, { mode: "cors", credentials: "omit" })
+            .then(function (res) {
+              if (!res.ok) throw new Error("HTTP " + res.status);
+              return res.text();
+            })
+            .then(function (text) {
+              var name = "from-url.seq";
+              try {
+                var u = new URL(fetchUrl, window.location.href);
+                var base = u.pathname.split("/").pop();
+                if (base) name = base;
+              } catch (e) { /* keep default */ }
+              applySeqText(text, "?url= fetch", name, new Blob([text]).size);
+            })
+            .catch(function (err) {
+              resetExtra();
+              showStatus(
+                "warn",
+                "Could not load <code>?url=</code>: " + escapeHtml(String(err.message || err)) + ". The file URL must be reachable and allow CORS from this origin."
+              );
+            });
           return;
         }
 
-        showStatus("info", "Loading…");
-        fetch(fetchUrl, { mode: "cors", credentials: "omit" })
-          .then(function (res) {
-            if (!res.ok) throw new Error("HTTP " + res.status);
-            return res.text();
-          })
-          .then(function (text) {
-            var name = "from-url.seq";
-            try {
-              var u = new URL(fetchUrl, window.location.href);
-              var base = u.pathname.split("/").pop();
-              if (base) name = base;
-            } catch (e) { /* keep default */ }
-            applySeqText(text, name, new Blob([text]).size);
-          })
-          .catch(function (err) {
+        if (dataParam && String(dataParam).trim()) {
+          try {
+            var text = b64urlToUtf8(dataParam);
+            var name = (nameParam && nameParam.trim()) || "from-data.seq";
+            applySeqText(text, "?data= (embedded)", name, new Blob([text]).size);
+          } catch (e) {
             resetExtra();
-            showStatus(
-              "warn",
-              "Could not load <code>?url=</code>: " + escapeHtml(String(err.message || err)) + ". The file URL must be reachable and allow CORS from this origin."
-            );
-          });
+            showStatus("warn", "Invalid <code>?data=</code>: " + escapeHtml(String(e.message || e)));
+          }
+          return;
+        }
+
+        showStatus(
+          "info",
+          "Add <code>?url=</code> (HTTPS link to a hosted <code>.seq</code>) or <code>?data=</code> (base64url). For a <strong>local file</strong>, run: <code>python -u send_example_seq.py path/to/file.seq</code>"
+        );
       }
 
       run();
