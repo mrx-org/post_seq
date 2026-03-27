@@ -10,6 +10,20 @@ Static page for inspecting Pulseq `.seq` files in the browser, plus examples for
 
 The Python and MATLAB snippets below use the intended API: **`POST`** with multipart field name **`file`**. Use them against any HTTP server you control that implements the same contract (for example a small Flask or FastAPI app, or a serverless function). You can keep the same URL path after you add such a backend, or point the scripts to your server’s URL.
 
+### Links (`?…` and `#…`)
+
+Putting the full sequence text in a query string like `?data=…very long…` is **not a good idea**: browsers cap total URL length (often on the order of **1–2 MB** in practice, and much less in older stacks), URLs are stored in history and server logs, and encoding increases size.
+
+The page supports:
+
+| Mechanism | Use case |
+|-----------|----------|
+| **`?url=https://…/file.seq`** | The app **GETs** that URL (must allow **CORS** from `https://mrx-org.github.io`). Good for **large** files hosted on GitHub raw, a CDN, etc. |
+| **`#b64=…`** (base64url of UTF-8 bytes) | Embedded payload **without** sending it to the GitHub Pages server (fragment is client-only). Still limited by **maximum URL length** in the browser—fine for small/medium files, not for arbitrary multi‑MB files. |
+| **`?seq=…`** | **Very short** snippets only (the page enforces a small limit). |
+
+Use **`send_example_seq.py --open-link`** to open the site with a `#b64=` link when the file is small enough; otherwise host the `.seq` and open `?url=…`.
+
 ### Browser JavaScript → simulation API
 
 Yes. The GitHub Pages site only **hosts** the HTML/JS; your script runs in the visitor’s browser. After the user picks a `.seq` file, JavaScript holds a [`File`](https://developer.mozilla.org/en-US/docs/Web/API/File) object. You can forward it to your simulation backend with [`fetch`](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) and [`FormData`](https://developer.mozilla.org/en-US/docs/Web/API/FormData), for example:

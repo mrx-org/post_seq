@@ -137,7 +137,7 @@
         <p>Only the file name and contents are read in your browser; nothing is uploaded to a server.</p>
       </div>
       <input type="file" id="file" accept=".seq,text/plain" />
-      <p class="hint">Expected API for scripts: <code>POST</code> multipart field name <code>file</code> (see README). GitHub Pages does not run a server; use these examples with a backend that implements the same contract, or rely on this page for manual checks.</p>
+      <p class="hint">Open with a link: <code>?url=</code> (HTTPS URL to a <code>.seq</code>; page fetches it if CORS allows) or <code>#b64=</code> (base64url of file bytes; size-limited). Tiny snippets: <code>?seq=</code> (short text only). <code>POST</code> field <code>file</code> for APIs (see README).</p>
 
       <div class="status" id="status" role="status"></div>
       <div class="meta" id="meta" hidden></div>
@@ -166,11 +166,90 @@
         statusEl.innerHTML = html;
       }
 
+      var MAX_QUERY_SEQ = 8192;
+
       function resetExtra() {
         metaEl.hidden = true;
         codeFieldEl.hidden = true;
         metaEl.innerHTML = "";
         seqContentEl.value = "";
+      }
+
+      function applySeqText(text, label, name, sizeBytes) {
+        resetExtra();
+        var n = name || "(text)";
+        var sz = sizeBytes != null ? sizeBytes : new Blob([String(text)]).size;
+        showStatus("ok", "<strong>Loaded</strong> (" + escapeHtml(label) + "): <code>" + escapeHtml(n) + "</code> — " + formatBytes(sz) + ".");
+        metaEl.hidden = false;
+        metaEl.innerHTML =
+          '<div>Source: <span>' + escapeHtml(label) + "</span></div>" +
+          '<div>Name: <span>' + escapeHtml(n) + "</span></div>" +
+          '<div>Size: <span>' + formatBytes(sz) + "</span></div>";
+        seqContentEl.value = String(text);
+        codeFieldEl.hidden = false;
+      }
+
+      function b64urlToUtf8(b64url) {
+        var s = String(b64url).replace(/-/g, "+").replace(/_/g, "/");
+        var pad = s.length % 4;
+        if (pad) s += "====".slice(pad);
+        var bin = atob(s);
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new TextDecoder("utf-8").decode(bytes);
+      }
+
+      function initFromLocation() {
+        var params = new URLSearchParams(window.location.search);
+        var fetchUrl = params.get("url");
+        if (fetchUrl) {
+          fetch(fetchUrl, { mode: "cors", credentials: "omit" })
+            .then(function (res) {
+              if (!res.ok) throw new Error("HTTP " + res.status);
+              return res.text();
+            })
+            .then(function (text) {
+              try {
+                var u = new URL(fetchUrl, window.location.href);
+                var base = u.pathname.split("/").pop() || "from-url.seq";
+                applySeqText(text, "?url= fetch", base, new Blob([text]).size);
+              } catch (e) {
+                applySeqText(text, "?url= fetch", "from-url.seq", new Blob([text]).size);
+              }
+            })
+            .catch(function (err) {
+              showStatus("warn", "Could not load <code>?url=</code>: " + escapeHtml(String(err.message || err)) + ". The host must allow CORS from this origin.");
+            });
+          return;
+        }
+
+        var seqQ = params.get("seq");
+        if (seqQ != null && seqQ !== "") {
+          if (seqQ.length > MAX_QUERY_SEQ) {
+            showStatus("warn", "<code>?seq=</code> is too long (&gt; " + MAX_QUERY_SEQ + " chars). Put the file online and use <code>?url=</code>, or use <code>#b64=</code> / local file.");
+            return;
+          }
+          var decoded;
+          try {
+            decoded = decodeURIComponent(seqQ.replace(/\+/g, " "));
+          } catch (e) {
+            decoded = seqQ;
+          }
+          applySeqText(decoded, "?seq= query", "from-query.seq", new Blob([decoded]).size);
+          return;
+        }
+
+        var hash = window.location.hash;
+        if (hash.length > 5 && hash.indexOf("#b64=") === 0) {
+          var payload = hash.slice(5);
+          if (!payload) return;
+          try {
+            var text = b64urlToUtf8(payload);
+            applySeqText(text, "#b64= fragment", "from-base64.seq", new Blob([text]).size);
+          } catch (e) {
+            showStatus("warn", "Invalid <code>#b64=</code> data: " + escapeHtml(String(e.message || e)));
+          }
+        }
       }
 
       function handleFile(file) {
@@ -185,16 +264,7 @@
         var reader = new FileReader();
         reader.onload = function () {
           var text = reader.result || "";
-          showStatus("ok", "<strong>Received</strong> (client-side): <code>" + escapeHtml(name) + "</code> — " + formatBytes(file.size) + ".");
-
-          metaEl.hidden = false;
-          metaEl.innerHTML =
-            '<div>Name: <span>' + escapeHtml(name) + "</span></div>" +
-            '<div>Size: <span>' + formatBytes(file.size) + "</span></div>" +
-            '<div>Type: <span>' + escapeHtml(file.type || "(n/a)") + "</span></div>";
-
-          seqContentEl.value = String(text);
-          codeFieldEl.hidden = false;
+          applySeqText(text, "file", name, file.size);
         };
         reader.onerror = function () {
           showStatus("warn", "Could not read the file.");
@@ -237,6 +307,8 @@
         var f = e.dataTransfer.files && e.dataTransfer.files[0];
         handleFile(f);
       });
+
+      initFromLocation();
     })();
   </script>
 </body>
