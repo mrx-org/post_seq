@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>post_seq — .seq upload</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --border: #2d3a4d;
+      --text: #e8edf4;
+      --muted: #8b9cb3;
+      --accent: #3d9cfd;
+      --accent-dim: #2563a8;
+      --ok: #34d399;
+      --err: #f87171;
+      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+      --mono: "Cascadia Code", "Consolas", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font);
+      background: radial-gradient(ellipse 120% 80% at 50% -20%, #1e3a5f 0%, var(--bg) 55%);
+      color: var(--text);
+      line-height: 1.55;
+    }
+    .wrap {
+      max-width: min(960px, 100% - 2rem);
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 3rem;
+    }
+    h1 {
+      font-size: 1.65rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin: 0 0 0.35rem;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin: 0 0 2rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .drop {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 2rem 1.25rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .drop:hover, .drop.dragover {
+      border-color: var(--accent);
+      background: rgba(61, 156, 253, 0.06);
+    }
+    .drop strong { color: var(--accent); }
+    .drop p { margin: 0.5rem 0 0; font-size: 0.9rem; color: var(--muted); }
+    input[type="file"] { display: none; }
+    .hint {
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .status {
+      margin-top: 1.25rem;
+      padding: 0.85rem 1rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      display: none;
+    }
+    .status.show { display: block; }
+    .status.ok { background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.35); color: #a7f3d0; }
+    .status.warn { background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.35); color: #fecaca; }
+    .code-field {
+      margin-top: 1rem;
+    }
+    .code-field label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+    #seq-content {
+      display: block;
+      width: 100%;
+      min-height: min(50vh, 520px);
+      margin: 0;
+      padding: 1rem;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.8rem;
+      line-height: 1.45;
+      font-family: var(--mono);
+      color: #c9d1d9;
+      resize: vertical;
+      white-space: pre;
+      overflow-wrap: normal;
+      overflow-x: auto;
+    }
+    #seq-content:focus {
+      outline: 2px solid var(--accent-dim);
+      outline-offset: 2px;
+    }
+    .meta {
+      display: grid;
+      gap: 0.35rem;
+      margin-top: 0.75rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .meta span { color: var(--text); }
+    footer {
+      margin-top: 2rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    footer a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>post_seq</h1>
+    <p class="sub">Receive a Pulseq <code>.seq</code> file in the browser (local processing only).</p>
+
+    <div class="card">
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Drop .seq file or click to choose">
+        <div>Drop a <strong>.seq</strong> file here or <strong>browse</strong></div>
+        <p>Only the file name and contents are read in your browser; nothing is uploaded to a server.</p>
+      </div>
+      <input type="file" id="file" accept=".seq,text/plain" />
+      <p class="hint">Expected API for scripts: <code>POST</code> multipart field name <code>file</code> (see README). GitHub Pages does not run a server; use these examples with a backend that implements the same contract, or rely on this page for manual checks.</p>
+
+      <div class="status" id="status" role="status"></div>
+      <div class="meta" id="meta" hidden></div>
+      <div class="code-field" id="codeField" hidden>
+        <label for="seq-content">.seq contents</label>
+        <textarea id="seq-content" readonly spellcheck="false" wrap="off" rows="24" aria-readonly="true"></textarea>
+      </div>
+    </div>
+
+    <footer>
+      <a href="https://github.com/mrx-org/post_seq">mrx-org/post_seq</a> — public URL: <a href="https://mrx-org.github.io/post_seq/">https://mrx-org.github.io/post_seq/</a>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      var drop = document.getElementById("drop");
+      var input = document.getElementById("file");
+      var statusEl = document.getElementById("status");
+      var metaEl = document.getElementById("meta");
+      var codeFieldEl = document.getElementById("codeField");
+      var seqContentEl = document.getElementById("seq-content");
+
+      function showStatus(cls, html) {
+        statusEl.className = "status show " + cls;
+        statusEl.innerHTML = html;
+      }
+
+      function resetExtra() {
+        metaEl.hidden = true;
+        codeFieldEl.hidden = true;
+        metaEl.innerHTML = "";
+        seqContentEl.value = "";
+      }
+
+      function handleFile(file) {
+        resetExtra();
+        if (!file) return;
+        var name = file.name || "";
+        var lower = name.toLowerCase();
+        if (lower && !lower.endsWith(".seq")) {
+          showStatus("warn", "The selected file does not end with <code>.seq</code>. You can still preview it.");
+        }
+
+        var reader = new FileReader();
+        reader.onload = function () {
+          var text = reader.result || "";
+          showStatus("ok", "<strong>Received</strong> (client-side): <code>" + escapeHtml(name) + "</code> — " + formatBytes(file.size) + ".");
+
+          metaEl.hidden = false;
+          metaEl.innerHTML =
+            '<div>Name: <span>' + escapeHtml(name) + "</span></div>" +
+            '<div>Size: <span>' + formatBytes(file.size) + "</span></div>" +
+            '<div>Type: <span>' + escapeHtml(file.type || "(n/a)") + "</span></div>";
+
+          seqContentEl.value = String(text);
+          codeFieldEl.hidden = false;
+        };
+        reader.onerror = function () {
+          showStatus("warn", "Could not read the file.");
+        };
+        reader.readAsText(file);
+      }
+
+      function escapeHtml(s) {
+        var d = document.createElement("div");
+        d.textContent = s;
+        return d.innerHTML;
+      }
+
+      function formatBytes(n) {
+        if (n < 1024) return n + " B";
+        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+        return (n / (1024 * 1024)).toFixed(1) + " MB";
+      }
+
+      drop.addEventListener("click", function () { input.click(); });
+      drop.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
+      });
+      input.addEventListener("change", function () {
+        var f = input.files && input.files[0];
+        handleFile(f);
+      });
+
+      ["dragenter", "dragover", "dragleave", "drop"].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+      });
+      drop.addEventListener("dragenter", function () { drop.classList.add("dragover"); });
+      drop.addEventListener("dragleave", function () { drop.classList.remove("dragover"); });
+      drop.addEventListener("dragover", function () { drop.classList.add("dragover"); });
+      drop.addEventListener("drop", function (e) {
+        drop.classList.remove("dragover");
+        var f = e.dataTransfer.files && e.dataTransfer.files[0];
+        handleFile(f);
+      });
+    })();
+  </script>
+</body>
+</html>
